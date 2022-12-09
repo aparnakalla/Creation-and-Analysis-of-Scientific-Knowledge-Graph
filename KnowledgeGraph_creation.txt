@@ -1,0 +1,56 @@
+/*building graph*/
+/*Creating nodes and properties*/
+:auto USING PERIODIC COMMIT 10000
+LOAD CSV WITH HEADERS FROM 'file:///research_paper_dataset.csv' AS row with row where row.Title is not null
+MERGE (a:paper{name:row.Title, topic_no:row.Topic_NO,PAPER_ID:row.paper_ID, authors:row.Authors, year:row.YOP, keywords:row.Keywords, fos:row.FOS, n_citation:row.Number_of_citations, doi:row.DOI, url:row.URL, references:row.References});
+
+/*creating relationships*/
+MATCH (a:paper),(b:paper)
+with b.references as l
+unwind l as l1
+    with [x in l1 where x=a.PAPER_ID] as cl
+    CREATE (b)-[r:references]->(a)              
+
+/*graph projectipn*/
+CALL gds.graph.project.cypher('myPaper', 'Match (n:paper) Return id(n) as id','Match (n:paper)-[]->(m:paper) Return id(n) as source, id(m) as target')       
+
+/*calculating node scores*/
+/*pagerank score calculation*/
+CALL gds.pageRank('myPaper', {
+  maxIterations: 20,
+  dampingFactor: 0.85,
+  tolerance: 0.1
+})
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS name, score
+ORDER BY score DESC             
+
+/*eigenvector calculation*/
+CALL gds.eigenvector('myPaper')
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS name, score
+ORDER BY score DESC
+
+/*betweenness score calculation*/
+CALL gds.betweenness('myGraph')
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS name, score
+ORDER BY score DESC
+
+/*normalizing values*/
+CALL gds.graph.project(
+  'myPaper',
+  'paper',
+  '*',
+  { nodeProperties: ['pagerank', 'centrality', 'betweenness'] }
+)
+
+CALL gds.alpha.scaleProperties('myPaper', {
+  nodeProperties: ['pagerank', 'centrality', 'betweenness'],
+  scaler: 'MinMax'
+}) YIELD nodeId, scaledProperty
+RETURN gds.util.asNode(nodeId).name AS name, scaledProperty
+  ORDER BY scaledProperty DESC
+
+
+                                                                                                                                                                                                            
